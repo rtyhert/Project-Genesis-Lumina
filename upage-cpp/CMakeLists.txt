@@ -7,7 +7,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(OpenGL REQUIRED)
 find_package(gRPC REQUIRED)
 find_package(Protobuf REQUIRED)
-find_package(OpenAL REQUIRED OPTIONAL)
+find_package(OpenAL REQUIRED)
+find_package(GLFW3 REQUIRED)
 
 add_subdirectory(external/live2d-cubism)
 add_subdirectory(external/glfw)
@@ -20,6 +21,7 @@ add_executable(upage_client
     src/live2d_model.cpp
     src/input_handler.cpp
     src/grpc_client.cpp
+    src/lip_sync_handler.cpp
 )
 
 target_include_directories(upage_client PRIVATE
@@ -34,4 +36,16 @@ target_link_libraries(upage_client PRIVATE
     gRPC::grpc++
     protobuf::libprotobuf
     OpenAL::AL
+)
+
+if(WIN32)
+    target_link_libraries(upage_client PRIVATE
+        strmiids
+        ole32
+        oleaut32
+    )
+endif()
+
+target_compile_definitions(upage_client PRIVATE
+    $<$<CONFIG:Debug>:UPAGE_DEBUG>
 )

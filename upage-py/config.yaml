@@ -3,6 +3,8 @@ server:
   port: 50051
   rest_port: 8000
 
+hot_reload: false
+
 llm:
   provider: "openai"
   model: "gpt-4"
@@ -13,10 +15,28 @@ tts:
   engine: "edge-tts"
   voice: "zh-CN-XiaoxiaoNeural"
   speed: 1.0
+  pitch: 0.0
+  volume: 1.0
+  language: "zh-CN"
+  cache_enabled: true
+  cache_dir: "cache/tts"
+  cache_ttl: 3600
 
 stt:
   engine: "whisper"
   model: "base"
+  language: "zh"
+  sample_rate: 16000
+  vad_enabled: true
+  device: "auto"
+  compute_type: "float16"
+  vosk_model_path: "models/vosk"
+
+lip_sync:
+  fps: 30
+  emotion: "neutral"
+  emotion_intensity: 0.5
+  smoothing: 0.3
 
 crew:
   max_iterations: 5
@@ -26,6 +46,12 @@ neuro:
   stream_mode: "simulate"
   audience_size: 10
   auto_reply: true
+
+chat:
+  session_timeout: 300
+  max_sessions: 1000
+  decay_rate: 0.1
+  blend_threshold: 0.3
 
 logging:
   level: "INFO"

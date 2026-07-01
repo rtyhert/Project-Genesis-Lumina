@@ -8,6 +8,12 @@ service VirtualHuman {
     rpc SyncLip (LipSyncRequest) returns (LipSyncData);
     rpc TriggerAction (ActionRequest) returns (ActionResponse);
     rpc StreamStatus (StatusRequest) returns (stream StatusEvent);
+
+    rpc SendEmotion (EmotionRequest) returns (EmotionResponse);
+    rpc Live2DControl (Live2DCommand) returns (Live2DResponse);
+    rpc StreamLiveStatus (LiveStatusRequest) returns (stream LiveStatusEvent);
+    rpc SendGift (GiftNotify) returns (GiftResponse);
+    rpc ProcessAudioStream (stream AudioUpload) returns (STTResult);
 }
 
 message ChatRequest {
@@ -15,31 +21,62 @@ message ChatRequest {
     string message = 2;
     string session_id = 3;
     map<string, string> context = 4;
+    EmotionContext emotion_context = 5;
 }
 
 message ChatResponse {
     string reply_text = 1;
-    string emotion_tag = 2;
+    EmotionTag emotion_tag = 2;
     string action_tag = 3;
     repeated LipFrame lip_frames = 4;
     AudioMeta audio_meta = 5;
+    Live2DTrigger live2d_trigger = 6;
 }
+
+// ============== Audio ==============
 
 message AudioRequest {
     string text = 1;
     string voice_id = 2;
     float speed = 3;
+    EmotionTag emotion = 4;
 }
 
 message AudioChunk {
     bytes data = 1;
     uint64 timestamp = 2;
     bool is_final = 3;
+    uint32 sequence = 4;
 }
+
+message AudioUpload {
+    bytes data = 1;
+    uint64 timestamp = 2;
+    bool is_final = 3;
+    string session_id = 4;
+}
+
+message STTResult {
+    string text = 1;
+    float confidence = 2;
+    bool is_final = 3;
+    string language = 4;
+}
+
+message AudioMeta {
+    string format = 1;
+    int32 sample_rate = 2;
+    int32 channels = 3;
+    float duration = 4;
+    int32 bits_per_sample = 5;
+}
+
+// ============== Lip Sync ==============
 
 message LipSyncRequest {
     string text = 1;
     repeated AudioChunk audio = 2;
+    string language = 3;
 }
 
 message LipFrame {
@@ -48,23 +85,31 @@ message LipFrame {
     double jaw_y = 3;
     double tongue_x = 4;
     double tongue_y = 5;
+    double lip_width = 6;
 }
 
 message LipSyncData {
     repeated LipFrame frames = 1;
+    double total_duration = 2;
 }
+
+// ============== Action ==============
 
 message ActionRequest {
     string action_type = 1;
     string emotion = 2;
     map<string, string> params = 3;
+    float intensity = 4;
 }
 
 message ActionResponse {
     bool success = 1;
     string animation_id = 2;
     float duration = 3;
+    string error_message = 4;
 }
+
+// ============== Status ==============
 
 message StatusRequest {
     string client_id = 1;
@@ -77,9 +122,241 @@ message StatusEvent {
     uint64 timestamp = 3;
 }
 
-message AudioMeta {
-    string format = 1;
-    int32 sample_rate = 2;
-    int32 channels = 3;
-    float duration = 4;
+// ============== Emotion Tag System ==============
+
+enum EmotionCategory {
+    EMOTION_UNKNOWN = 0;
+    HAPPY = 1;
+    SAD = 2;
+    ANGRY = 3;
+    SURPRISED = 4;
+    NEUTRAL = 5;
+    LOVING = 6;
+    ANXIOUS = 7;
+    EXCITED = 8;
+    CALM = 9;
+    CONFUSED = 10;
+}
+
+message EmotionTag {
+    EmotionCategory category = 1;
+    float intensity = 2;        // 0.0 - 1.0
+    float valence = 3;          // -1.0 (negative) to +1.0 (positive)
+    float arousal = 4;          // 0.0 (calm) to 1.0 (excited)
+    string custom_label = 5;
+    map<string, float> dimensions = 6;
+}
+
+message EmotionContext {
+    repeated EmotionTag history = 1;
+    string trigger_source = 2;   // "user", "system", "stream"
+    uint64 timestamp = 3;
+}
+
+message EmotionRequest {
+    string session_id = 1;
+    EmotionTag emotion = 2;
+    string source = 3;
+}
+
+message EmotionResponse {
+    bool success = 1;
+    EmotionTag resulting_emotion = 2;
+    string transition_animation = 3;
+}
+
+// ============== Live2D Control ==============
+
+enum ExpressionType {
+    EXPR_DEFAULT = 0;
+    EXPR_HAPPY = 1;
+    EXPR_SAD = 2;
+    EXPR_ANGRY = 3;
+    EXPR_SURPRISE = 4;
+    EXPR_BLINK = 5;
+    EXPR_SMILE = 6;
+    EXPR_CRY = 7;
+    EXPR_CUSTOM = 99;
+}
+
+enum MotionGroup {
+    MOTION_IDLE = 0;
+    MOTION_TALKING = 1;
+    MOTION_GREETING = 2;
+    MOTION_WAVING = 3;
+    MOTION_NODDING = 4;
+    MOTION_SHAKING_HEAD = 5;
+    MOTION_THINKING = 6;
+    MOTION_DANCING = 7;
+    MOTION_CUSTOM = 99;
+}
+
+message Live2DCommand {
+    string session_id = 1;
+
+    oneof command {
+        ExpressionControl expression = 10;
+        MotionControl motion = 11;
+        ParamControl param = 12;
+        LipSyncControl lip_sync = 13;
+        PhysicsControl physics = 14;
+    }
+
+    float transition_time = 15;
+    bool queue = 16;
+    uint32 priority = 17;
+}
+
+message ExpressionControl {
+    ExpressionType type = 1;
+    float intensity = 2;       // 0.0 - 1.0
+    float duration = 3;
+    map<string, float> custom_params = 4;
+}
+
+message MotionControl {
+    MotionGroup group = 1;
+    string animation_id = 2;
+    float speed = 3;
+    bool loop = 4;
+    int32 loop_count = 5;
+    float weight = 6;
+}
+
+message ParamControl {
+    string param_name = 1;
+    float value = 2;
+    float min_value = 3;
+    float max_value = 4;
+    bool clamp = 5;
+}
+
+message LipSyncControl {
+    bool enabled = 1;
+    float gain = 2;             // sensitivity 0.0 - 2.0
+    string phoneme_map = 3;     // optional phoneme mapping
+    repeated LipFrame override_frames = 4;
+}
+
+message PhysicsControl {
+    bool enabled = 1;
+    float wind_strength = 2;
+    float gravity = 3;
+    bool reset = 4;
+}
+
+message Live2DTrigger {
+    ExpressionType expression = 1;
+    MotionGroup motion = 2;
+    float intensity = 3;
+    float transition_time = 4;
+}
+
+message Live2DResponse {
+    bool success = 1;
+    string animation_id = 2;
+    float transition_duration = 3;
+    string error = 4;
+}
+
+// ============== Live Stream Status ==============
+
+message LiveStatusRequest {
+    string stream_id = 1;
+    string platform = 2;        // "bilibili", "twitch", "youtube", etc.
+    repeated LiveEventType subscribe_types = 3;
+}
+
+enum LiveEventType {
+    LIVE_EVENT_UNKNOWN = 0;
+    AUDIENCE_MESSAGE = 1;
+    GIFT = 2;
+    FOLLOW = 3;
+    SUBSCRIBE = 4;
+    ENTER_ROOM = 5;
+    LIKE = 6;
+    SHARE = 7;
+    SUPER_CHAT = 8;
+}
+
+message LiveStatusEvent {
+    string stream_id = 1;
+    LiveEventType event_type = 2;
+    uint64 timestamp = 3;
+    uint64 event_id = 4;
+
+    oneof event_data {
+        AudienceMessage audience_msg = 10;
+        GiftEvent gift = 11;
+        FollowEvent follow = 12;
+        EnterRoomEvent enter = 13;
+        LikeEvent like = 14;
+        SuperChatEvent super_chat = 15;
+    }
+}
+
+message AudienceMessage {
+    string user_id = 1;
+    string user_name = 2;
+    string message = 3;
+    EmotionTag emotion = 4;
+    repeated string badges = 5;
+    uint64 timestamp = 6;
+}
+
+message GiftEvent {
+    string user_id = 1;
+    string user_name = 2;
+    string gift_name = 3;
+    string gift_id = 4;
+    int32 count = 5;
+    float price = 6;
+    string currency = 7;
+    string combo_info = 8;
+    bool is_combo = 9;
+}
+
+message GiftNotify {
+    string stream_id = 1;
+    string user_id = 2;
+    string user_name = 3;
+    string gift_name = 4;
+    string gift_id = 5;
+    int32 count = 6;
+}
+
+message GiftResponse {
+    bool success = 1;
+    EmotionTag reaction_emotion = 2;
+    Live2DTrigger reaction_action = 3;
+    string thank_you_text = 4;
+}
+
+message FollowEvent {
+    string user_id = 1;
+    string user_name = 2;
+    bool is_new_follower = 3;
+    int64 follower_count = 4;
+}
+
+message EnterRoomEvent {
+    string user_id = 1;
+    string user_name = 2;
+    string entry_effect = 3;
+}
+
+message LikeEvent {
+    string user_id = 1;
+    string user_name = 2;
+    int32 count = 3;
+    int64 total_likes = 4;
+}
+
+message SuperChatEvent {
+    string user_id = 1;
+    string user_name = 2;
+    string message = 3;
+    float amount = 4;
+    string currency = 5;
+    int32 duration_seconds = 6;
 }
