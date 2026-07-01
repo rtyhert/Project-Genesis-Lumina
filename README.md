@@ -1,19 +1,19 @@
-# uPage - Virtual Human Full-Stack Platform
+# Project Genesis: Lumina
 
-基于 N.E.K.O + CrewAI + Neuro-simulator 重构的全栈虚拟人平台。
+虚拟人全栈平台 — 基于 N.E.K.O + CrewAI + Neuro-simulator 重构的高性能 Live2D/VRM 虚拟人系统。
 
 ## 架构
 
 ```
-upage/
-├── upage-proto/    # gRPC 协议定义 (Proto3)
-├── upage-cpp/      # C++ 前端 (渲染/音视频/交互)
+lumina/
+├── lumina-proto/    # gRPC 协议定义 (Proto3)
+├── lumina-cpp/      # C++ 前端 (渲染/音视频/交互)
 │   ├── src/        #  主程序源码
 │   ├── include/    #  头文件
 │   └── external/   #  第三方 (Live2D, GLFW)
-├── upage-py/       # Python 后端 (AI/Agent/TTS)
+├── lumina-py/       # Python 后端 (AI/Agent/TTS)
 │   └── src/        #  服务端源码
-└── upage-bridge/   # IPC 通信桥接层
+└── lumina-bridge/   # IPC 通信桥接层
 ```
 
 ## 通信流程
@@ -30,14 +30,14 @@ upage/
 
 ### C++
 ```bash
-cd upage-cpp
+cd lumina-cpp
 cmake -B build
 cmake --build build
 ```
 
 ### Python
 ```bash
-cd upage-py
+cd lumina-py
 pip install -r requirements.txt
 python -m src.server
 ```

@@ -1,0 +1,51 @@
+cmake_minimum_required(VERSION 3.20)
+project(lumina-cpp VERSION 0.1.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+find_package(OpenGL REQUIRED)
+find_package(gRPC REQUIRED)
+find_package(Protobuf REQUIRED)
+find_package(OpenAL REQUIRED)
+find_package(GLFW3 REQUIRED)
+
+add_subdirectory(external/live2d-cubism)
+add_subdirectory(external/glfw)
+add_subdirectory(lumina-proto)
+
+add_executable(lumina_client
+    src/main.cpp
+    src/renderer.cpp
+    src/audio_engine.cpp
+    src/live2d_model.cpp
+    src/input_handler.cpp
+    src/grpc_client.cpp
+    src/lip_sync_handler.cpp
+)
+
+target_include_directories(lumina_client PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_BINARY_DIR}/../lumina-proto
+)
+
+target_link_libraries(lumina_client PRIVATE
+    OpenGL::GL
+    glfw
+    live2d-cubism
+    gRPC::grpc++
+    protobuf::libprotobuf
+    OpenAL::AL
+)
+
+if(WIN32)
+    target_link_libraries(lumina_client PRIVATE
+        strmiids
+        ole32
+        oleaut32
+    )
+endif()
+
+target_compile_definitions(lumina_client PRIVATE
+    $<$<CONFIG:Debug>:LUMINA_DEBUG>
+)
