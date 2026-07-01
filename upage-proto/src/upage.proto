@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package upage;
+
+service VirtualHuman {
+    rpc ProcessChat (ChatRequest) returns (ChatResponse);
+    rpc StreamAudio (AudioRequest) returns (stream AudioChunk);
+    rpc SyncLip (LipSyncRequest) returns (LipSyncData);
+    rpc TriggerAction (ActionRequest) returns (ActionResponse);
+    rpc StreamStatus (StatusRequest) returns (stream StatusEvent);
+}
+
+message ChatRequest {
+    string user_id = 1;
+    string message = 2;
+    string session_id = 3;
+    map<string, string> context = 4;
+}
+
+message ChatResponse {
+    string reply_text = 1;
+    string emotion_tag = 2;
+    string action_tag = 3;
+    repeated LipFrame lip_frames = 4;
+    AudioMeta audio_meta = 5;
+}
+
+message AudioRequest {
+    string text = 1;
+    string voice_id = 2;
+    float speed = 3;
+}
+
+message AudioChunk {
+    bytes data = 1;
+    uint64 timestamp = 2;
+    bool is_final = 3;
+}
+
+message LipSyncRequest {
+    string text = 1;
+    repeated AudioChunk audio = 2;
+}
+
+message LipFrame {
+    double time = 1;
+    double mouth_open = 2;
+    double jaw_y = 3;
+    double tongue_x = 4;
+    double tongue_y = 5;
+}
+
+message LipSyncData {
+    repeated LipFrame frames = 1;
+}
+
+message ActionRequest {
+    string action_type = 1;
+    string emotion = 2;
+    map<string, string> params = 3;
+}
+
+message ActionResponse {
+    bool success = 1;
+    string animation_id = 2;
+    float duration = 3;
+}
+
+message StatusRequest {
+    string client_id = 1;
+    repeated string subscribed_events = 2;
+}
+
+message StatusEvent {
+    string event_type = 1;
+    string payload = 2;
+    uint64 timestamp = 3;
+}
+
+message AudioMeta {
+    string format = 1;
+    int32 sample_rate = 2;
+    int32 channels = 3;
+    float duration = 4;
+}

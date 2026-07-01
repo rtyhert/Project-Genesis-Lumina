@@ -1,0 +1,33 @@
+# Build
+build/
+cmake-build-*/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+logs/
+*.log
+
+# Environment
+.env
+venv/
+.venv/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Proto generated
+*_pb2.py
+*_pb2.pyi
+*_pb2_grpc.py
