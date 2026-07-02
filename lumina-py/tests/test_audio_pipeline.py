@@ -136,6 +136,7 @@ async def test_stt_convert_wav(stt_config):
 
     converted, rate = engine._convert_audio(wav_data, src_format="wav")
     assert len(converted) > 0
+    assert rate == 16000
 
 
 def test_stt_vad(stt_config):
@@ -191,7 +192,7 @@ def test_lip_sync_emotion(lip_sync_config):
 
     sad_mouth = data2.frames[0].mouth_open if data2.frames else 0.0
 
-    assert happy_mouth != sad_mouth or abs(happy_mouth - sad_mouth) < 0.01
+    assert abs(happy_mouth - sad_mouth) > 0.01, "Happy and sad emotions should produce different mouth openings"
 
 
 def test_lip_sync_audio_amplitude(lip_sync_config):

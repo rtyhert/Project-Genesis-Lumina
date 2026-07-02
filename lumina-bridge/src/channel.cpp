@@ -1,47 +1,54 @@
 #include "ipc_channel.h"
-#include <cstring>
 #include <iostream>
+#include <cstring>
 
-namespace lumina::bridge {
+namespace lumina {
 
-class GrpcChannel : public IPCChannel {
+class IpcChannel::Impl {
 public:
-    GrpcChannel() = default;
-    ~GrpcChannel() override { Disconnect(); }
-
-    bool Connect(const std::string& endpoint) override {
-        endpoint_ = endpoint;
-        std::cout << "[IPC] Connected to " << endpoint << std::endl;
-        connected_ = true;
-        return true;
-    }
-
-    void Disconnect() override {
-        connected_ = false;
-        std::cout << "[IPC] Disconnected" << std::endl;
-    }
-
-    bool Send(const Message& msg) override {
-        if (!connected_) return false;
-        std::cout << "[IPC] Sent: type=" << static_cast<int>(msg.type)
-                  << " payload=" << msg.payload.size() << "B" << std::endl;
-        return true;
-    }
-
-    bool Receive(Message& msg) override {
-        if (!connected_) return false;
-        return false;
-    }
-
-    bool IsConnected() const override { return connected_; }
-
-private:
-    std::string endpoint_;
-    bool connected_ = false;
+    std::string name;
+    bool connected = false;
+    MessageHandler handler;
 };
 
-std::unique_ptr<IPCChannel> CreateChannel() {
-    return std::make_unique<GrpcChannel>();
+IpcChannel::IpcChannel(const std::string& channel_name)
+    : impl_(std::make_unique<Impl>()) {
+    impl_->name = channel_name;
 }
 
-} // namespace lumina::bridge
+IpcChannel::~IpcChannel() {
+    Shutdown();
+}
+
+bool IpcChannel::Initialize() {
+    impl_->connected = true;
+    std::cout << "[IpcChannel] Initialized: " << impl_->name << std::endl;
+    return true;
+}
+
+void IpcChannel::Shutdown() {
+    impl_->connected = false;
+    impl_->handler = nullptr;
+    std::cout << "[IpcChannel] Shutdown: " << impl_->name << std::endl;
+}
+
+bool IpcChannel::Send(const BridgeMessage& msg) {
+    if (!impl_->connected) {
+        std::cerr << "[IpcChannel] Cannot send on closed channel" << std::endl;
+        return false;
+    }
+    if (impl_->handler) {
+        impl_->handler(msg);
+    }
+    return true;
+}
+
+void IpcChannel::SetHandler(MessageHandler handler) {
+    impl_->handler = std::move(handler);
+}
+
+bool IpcChannel::IsConnected() const {
+    return impl_->connected;
+}
+
+} // namespace lumina

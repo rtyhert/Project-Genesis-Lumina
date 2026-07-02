@@ -1,0 +1,25 @@
+version: "3.8"
+
+services:
+  lumina:
+    build: .
+    container_name: lumina-virtual-human
+    ports:
+      - "8000:8000"
+      - "50051:50051"
+    environment:
+      - LUMINA_MOCK=1
+      - PYTHONPATH=/app/lumina-py
+    volumes:
+      - lumina_cache:/app/lumina-py/cache
+      - lumina_logs:/app/luma-py/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  lumina_cache:
+  lumina_logs:

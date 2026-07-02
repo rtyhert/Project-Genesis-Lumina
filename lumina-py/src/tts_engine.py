@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import time
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import AsyncIterator, Dict, List, Optional, Tuple, Callable, Awaitable
 
@@ -25,6 +26,9 @@ class TTSCacheEntry:
     created_at: float = field(default_factory=time.time)
 
 
+OPENAI_TTS_VOICES = frozenset({"alloy", "echo", "fable", "onyx", "nova", "shimmer"})
+
+
 class TTSEngine:
     def __init__(self, config: dict):
         self.cfg = config
@@ -37,12 +41,38 @@ class TTSEngine:
         self.cache_dir = config.get("cache_dir", "cache/tts")
         self.cache_enabled = config.get("cache_enabled", True)
         self.cache_ttl = config.get("cache_ttl", 3600)
-        self._cache: Dict[str, TTSCacheEntry] = {}
+        self.max_cache_entries = config.get("max_cache_entries", 200)
+        self._cache: OrderedDict[str, TTSCacheEntry] = OrderedDict()
+        self._cache_loaded = False
+        self._cleanup_task: Optional[asyncio.Task] = None
         self._subscribers: List[Callable[[str, bytes], Awaitable[None]]] = []
+        self._pyttsx3_engine = None
 
-        if self.cache_enabled:
+    def _ensure_cache_loaded(self):
+        if self.cache_enabled and not self._cache_loaded:
+            self._cache_loaded = True
             os.makedirs(self.cache_dir, exist_ok=True)
             self._load_disk_cache()
+            if self._cleanup_task is None or self._cleanup_task.done():
+                self._cleanup_task = asyncio.create_task(self._periodic_cache_cleanup())
+
+    def _evict_if_needed(self):
+        while len(self._cache) > self.max_cache_entries:
+            self._cache.popitem(last=False)
+
+    async def _periodic_cache_cleanup(self):
+        while True:
+            await asyncio.sleep(300)
+            try:
+                now = time.time()
+                expired = [k for k, v in self._cache.items()
+                           if now - v.created_at > self.cache_ttl]
+                for k in expired:
+                    self._cache.pop(k, None)
+                if expired:
+                    log.info("Evicted %d expired TTS cache entries", len(expired))
+            except Exception as e:
+                log.warning("Cache cleanup error: %s", e)
 
     def subscribe(self, cb: Callable[[str, bytes], Awaitable[None]]):
         self._subscribers.append(cb)
@@ -82,15 +112,13 @@ class TTSEngine:
                         phonemes=phonemes,
                         created_at=meta.get("created_at", now),
                     )
+                    self._cache.move_to_end(key)
             log.info(f"Loaded {len(self._cache)} entries from TTS disk cache")
         except Exception as e:
             log.warning(f"Failed to load TTS disk cache: {e}")
 
     def _save_disk_cache(self, key: str, entry: TTSCacheEntry):
-        if not self.cache_enabled:
-            return
         try:
-            os.makedirs(self.cache_dir, exist_ok=True)
             audio_path = os.path.join(self.cache_dir, f"{key}.mp3")
             phoneme_path = os.path.join(self.cache_dir, f"{key}.phonemes.json")
             with open(audio_path, "wb") as f:
@@ -99,8 +127,7 @@ class TTSEngine:
                 json.dump(
                     [{"phoneme": p.phoneme, "start_time": p.start_time, "end_time": p.end_time}
                      for p in entry.phonemes],
-                    f,
-                    ensure_ascii=False,
+                    f, ensure_ascii=False,
                 )
             index_path = os.path.join(self.cache_dir, "index.json")
             index: Dict = {}
@@ -115,21 +142,12 @@ class TTSEngine:
 
     async def synthesize(self, text: str) -> AsyncIterator[bytes]:
         log.info(f"synthesizing {len(text)} chars, engine={self.engine}")
-
         result = await self._synthesize_full(text)
         if result is None:
             log.warning("all backends failed, yielding empty audio")
             yield b""
             return
-
-        audio, sample_rate, phonemes = result
-        if self.cache_enabled:
-            key = self._cache_key(text, self.voice, self.speed, self.pitch, self.volume)
-            self._cache[key] = TTSCacheEntry(
-                audio=audio, sample_rate=sample_rate, phonemes=phonemes
-            )
-            self._save_disk_cache(key, self._cache[key])
-
+        audio, sample_rate, _ = result
         chunk_size = sample_rate * 2
         for i in range(0, len(audio), chunk_size):
             yield audio[i:i + chunk_size]
@@ -142,10 +160,12 @@ class TTSEngine:
         audio, sample_rate, phonemes = result
         if self.cache_enabled:
             key = self._cache_key(text, self.voice, self.speed, self.pitch, self.volume)
-            self._cache[key] = TTSCacheEntry(
-                audio=audio, sample_rate=sample_rate, phonemes=phonemes
-            )
-            self._save_disk_cache(key, self._cache[key])
+            if key not in self._cache:
+                entry = TTSCacheEntry(audio=audio, sample_rate=sample_rate, phonemes=phonemes)
+                self._cache[key] = entry
+                self._cache.move_to_end(key)
+                self._evict_if_needed()
+                self._save_disk_cache(key, entry)
         await self._notify(text, audio)
         return audio, sample_rate, phonemes
 
@@ -153,10 +173,13 @@ class TTSEngine:
         if not text or not text.strip():
             return b"", 24000, []
 
+        self._ensure_cache_loaded()
+
         if self.cache_enabled:
             key = self._cache_key(text, self.voice, self.speed, self.pitch, self.volume)
             cached = self._cache.get(key)
             if cached and (time.time() - cached.created_at) < self.cache_ttl:
+                self._cache.move_to_end(key)
                 log.info(f"cache hit for text: {text[:40]}")
                 return cached.audio, cached.sample_rate, cached.phonemes
 
@@ -177,10 +200,8 @@ class TTSEngine:
                     return await self._synthesize_pyttsx3(text)
             except ImportError as e:
                 log.debug(f"backend {be} not available: {e}")
-                continue
             except Exception as e:
                 log.warning(f"backend {be} failed: {e}")
-                continue
         return None
 
     async def _synthesize_edge_tts(self, text: str) -> Tuple[bytes, int, List[PhonemeTiming]]:
@@ -209,21 +230,16 @@ class TTSEngine:
         return audio, 24000, phonemes
 
     async def _synthesize_openai(self, text: str) -> Tuple[bytes, int, List[PhonemeTiming]]:
-        import openai
         from openai import AsyncOpenAI
 
         client = AsyncOpenAI(api_key=self.cfg.get("openai_api_key"))
-        voice = self.voice if "alloy" in self.voice or "echo" in self.voice or "fable" in self.voice or "onyx" in self.voice or "nova" in self.voice or "shimmer" in self.voice else "nova"
+        voice = self.voice if self.voice in OPENAI_TTS_VOICES else "nova"
 
         resp = await client.audio.speech.create(
-            model="tts-1",
-            voice=voice,
-            input=text,
-            speed=self.speed,
-            response_format="wav",
+            model="tts-1", voice=voice, input=text,
+            speed=self.speed, response_format="wav",
         )
         audio = resp.content
-
         phonemes = self._estimate_phonemes(text, len(audio), 24000)
         return audio, 24000, phonemes
 
@@ -232,15 +248,16 @@ class TTSEngine:
         import pyttsx3
         import soundfile as sf
 
-        engine = pyttsx3.init()
+        if self._pyttsx3_engine is None:
+            self._pyttsx3_engine = pyttsx3.init()
+
+        engine = self._pyttsx3_engine
         rate = int(engine.getProperty("rate") * self.speed)
         engine.setProperty("rate", rate)
-        vol = min(1.0, max(0.0, self.volume))
-        engine.setProperty("volume", vol)
+        engine.setProperty("volume", min(1.0, max(0.0, self.volume)))
 
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             tmp_path = tmp.name
-
         try:
             engine.save_to_file(text, tmp_path)
             engine.runAndWait()
@@ -262,28 +279,15 @@ class TTSEngine:
         if not words:
             return []
         time_per_word = duration / len(words)
-        phonemes: List[PhonemeTiming] = []
-        t = 0.0
-        for w in words:
-            phonemes.append(PhonemeTiming(
-                phoneme=w,
-                start_time=t,
-                end_time=t + time_per_word,
-            ))
-            t += time_per_word
-        return phonemes
+        return [
+            PhonemeTiming(phoneme=w, start_time=i * time_per_word, end_time=(i + 1) * time_per_word)
+            for i, w in enumerate(words)
+        ]
 
     async def batch_synthesize(self, texts: List[str]) -> List[Tuple[bytes, int, List[PhonemeTiming]]]:
-        async def _single(t: str) -> Tuple[str, bytes, int, List[PhonemeTiming]]:
-            audio, sr, phonemes = await self.synthesize_full(t)
-            return t, audio, sr, phonemes
-
-        tasks = [_single(t) for t in texts]
-        results: List[Tuple[bytes, int, List[PhonemeTiming]]] = []
-        for coro in asyncio.as_completed(tasks):
-            text, audio, sr, phonemes = await coro
-            results.append((audio, sr, phonemes))
-        return results
+        tasks = [self.synthesize_full(t) for t in texts]
+        results = await asyncio.gather(*tasks)
+        return list(results)
 
     async def get_phoneme_timestamps(self, text: str) -> List[PhonemeTiming]:
         _, _, phonemes = await self.synthesize_full(text)

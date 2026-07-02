@@ -1,10 +1,17 @@
 import json
 import re
+import asyncio
 import logging
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional
 
-from crewai import Agent, Task, Crew, Process
+try:
+    from crewai import Agent, Task, Crew, Process
+    _HAS_CREWAI = True
+except ImportError:
+    _HAS_CREWAI = False
 from pydantic import BaseModel, Field
+
+from thread_pool import get_io_executor
 
 log = logging.getLogger("lumina.crew")
 
@@ -32,10 +39,14 @@ class CrewManager:
     def __init__(self, config: Dict, llm_service):
         self.cfg = config
         self.llm = llm_service
-        self.agents: Dict[str, Agent] = {}
+        self.agents: Dict[str, object] = {}
         self._create_agents()
 
     def _create_agents(self):
+        if not _HAS_CREWAI:
+            for name in ("chat", "stream", "planner"):
+                self.agents[name] = type("MockAgent", (), {"__repr__": lambda self: f"MockAgent({name})"})()
+            return
         self.agents["chat"] = Agent(
             role="Virtual Human Chat Agent",
             goal="Engage in natural, empathetic conversation with users, "
@@ -78,9 +89,12 @@ class CrewManager:
         description: str,
         agent_name: str = "chat",
         expected_output: str = "A complete response string",
-        context: Optional[List[Task]] = None,
-    ) -> Task:
-        return Task(
+        context=None,
+    ) -> object:
+        if not _HAS_CREWAI:
+            return None
+        from crewai import Task as CrewTask
+        return CrewTask(
             description=description,
             agent=self.agents[agent_name],
             expected_output=expected_output,
@@ -88,6 +102,8 @@ class CrewManager:
         )
 
     def run_task(self, task_description: str, agent_name: str = "chat") -> str:
+        if not _HAS_CREWAI:
+            return f"[MockCrew] {task_description}"
         task = self.create_task(task_description, agent_name)
         crew = Crew(
             agents=[self.agents[agent_name]],
@@ -98,7 +114,15 @@ class CrewManager:
         result = crew.kickoff()
         return str(result)
 
+    async def run_task_async(self, task_description: str, agent_name: str = "chat") -> str:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            get_io_executor(), self.run_task, task_description, agent_name
+        )
+
     def run_chained_tasks(self, tasks_config: List[Dict]) -> List[str]:
+        if not _HAS_CREWAI:
+            return [f"[MockCrew] {t.get('description', '')}" for t in tasks_config]
         results = []
         previous_tasks = []
 
@@ -140,7 +164,7 @@ class CrewManager:
             "Available actions: smile, laugh, cheer, wave, sigh, frown, nod, blink"
         )
 
-        response = self.run_task(prompt, agent_name="chat")
+        response = await self.run_task_async(prompt, agent_name="chat")
 
         emotion = "neutral"
         emotion_match = re.search(r'\[emotion:(\w+)\]', response)
@@ -169,7 +193,7 @@ class CrewManager:
             "interaction_prompt=<prompt>"
         )
 
-        response = self.run_task(prompt, agent_name="stream")
+        response = await self.run_task_async(prompt, agent_name="stream")
 
         try:
             scene = "interaction"
@@ -177,8 +201,8 @@ class CrewManager:
             if scene_match:
                 scene = scene_match.group(1)
 
-            lines = [l.strip("- ").strip() for l in response.split("\n")
-                     if l.strip().startswith("- ")]
+            lines = [line.strip("- ").strip() for line in response.split("\n")
+                     if line.strip().startswith("- ")]
 
             duration = len(lines) * 10
             dur_match = re.search(r'duration=(\d+)', response)
@@ -218,10 +242,10 @@ class CrewManager:
             "3. Fallback plan"
         )
 
-        response = self.run_task(prompt, agent_name="planner")
+        response = await self.run_task_async(prompt, agent_name="planner")
 
-        steps = [l.strip("- ").strip() for l in response.split("\n")
-                 if l.strip().startswith("- ") or re.match(r'^\d+[\.\)]', l.strip())]
+        steps = [line.strip("- ").strip() for line in response.split("\n")
+                 if line.strip().startswith("- ") or re.match(r'^\d+[\.\)]', line.strip())]
         if not steps:
             steps = ["Acknowledge user", "Respond appropriately", "Confirm understanding"]
 

@@ -1,36 +1,13 @@
+"""Deprecated — import from lumina_bridge.bus instead.
+
+Moved to: lumina_bridge.bus.BridgeServer, lumina_bridge.bus.BridgeMessage
 """
-lumina-bridge: Python-side IPC bridge for gRPC communication.
-"""
-import json
-import struct
-import asyncio
-from typing import Callable, Optional
-from dataclasses import dataclass, asdict
+import warnings
+warnings.warn(
+    "lumina-bridge/src/bridge_server.py is deprecated. "
+    "Use `from lumina_bridge.bus import BridgeServer, BridgeMessage` instead.",
+    DeprecationWarning, stacklevel=2,
+)
+from lumina_bridge.bus import BridgeServer, BridgeMessage
 
-@dataclass
-class BridgeMessage:
-    msg_type: str
-    payload: str
-    topic: str = ""
-    timestamp: float = 0.0
-
-class BridgeServer:
-    def __init__(self, host: str = "127.0.0.1", port: int = 50051):
-        self.host = host
-        self.port = port
-        self.handlers: dict[str, Callable] = {}
-
-    def register_handler(self, msg_type: str, handler: Callable):
-        self.handlers[msg_type] = handler
-
-    async def dispatch(self, msg: BridgeMessage) -> Optional[BridgeMessage]:
-        handler = self.handlers.get(msg.msg_type)
-        if handler:
-            result = await handler(msg)
-            return result
-        return None
-
-    async def start(self):
-        print(f"[BridgeServer] Listening on {self.host}:{self.port}")
-        while True:
-            await asyncio.sleep(0.01)
+__all__ = ["BridgeServer", "BridgeMessage"]

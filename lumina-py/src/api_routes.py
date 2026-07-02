@@ -3,7 +3,7 @@ import base64
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, UploadFile, File
 from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel, Field
 
@@ -37,12 +37,14 @@ class ChatResponse(BaseModel):
     session_id: str
     response: str
     emotion: str
+    sentiment: Optional[dict] = None
     suggested_action: Optional[str] = None
 
 
 class StatusResponse(BaseModel):
     server: str = "lumina-py"
     version: str = "0.1.0"
+    mock_mode: bool = False
     live_active: bool
     live_state: str
     session_count: int
@@ -74,11 +76,13 @@ async def chat_endpoint(req: ChatRequest, request: Request):
         session = await server.chat_handler.get_session(session_id)
         emotion, intensity = session.emotion.get_dominant_emotion() if session else ("neutral", 0.0)
         actions = session.emotion.get_suggested_actions() if session else []
+        sentiment = session.sentiment if hasattr(session, 'sentiment') else None
 
         return ChatResponse(
             session_id=session_id,
             response=response,
             emotion=emotion,
+            sentiment=sentiment,
             suggested_action=actions[0] if actions else None,
         )
     except HTTPException:
@@ -103,7 +107,7 @@ async def chat_stream_endpoint(req: ChatStreamRequest, request: Request):
                 yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
 
             session = await server.chat_handler.get_session(session_id)
-            emotion = session.emotion.get_dominant_emotion()[0] if session else "neutral"
+            emotion, _ = session.emotion.get_dominant_emotion() if session else ("neutral", 0.0)
             yield f"data: {json.dumps({'type': 'done', 'emotion': emotion, 'session_id': session_id})}\n\n"
         except Exception as e:
             log.error(f"Stream chat error: {e}", exc_info=True)
@@ -150,6 +154,18 @@ async def stt_endpoint(req: STTRequest, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/stt/upload")
+async def stt_upload_endpoint(file: UploadFile = File(...), request: Request = None):
+    server = get_server(request)
+    try:
+        audio_data = await file.read()
+        text = await server.stt.transcribe(audio_data, src_format=file.filename.split(".")[-1] if file.filename else "wav")
+        return {"text": text or "", "success": text is not None, "filename": file.filename}
+    except Exception as e:
+        log.error(f"STT upload error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/status", response_model=StatusResponse)
 async def status_endpoint(request: Request):
     server = get_server(request)
@@ -158,6 +174,7 @@ async def status_endpoint(request: Request):
         session_count = len(server.chat_handler.sessions)
 
         return StatusResponse(
+            mock_mode=server.mock_mode,
             live_active=neuro_status["active"],
             live_state=neuro_status["state"],
             session_count=session_count,
@@ -188,4 +205,81 @@ async def live_stop_endpoint(request: Request):
         return {"success": True, "message": "Live stream stopped"}
     except Exception as e:
         log.error(f"Live stop error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/live/status")
+async def live_status_endpoint(request: Request):
+    server = get_server(request)
+    try:
+        neuro_status = await server.neuro.get_status()
+        return neuro_status
+    except Exception as e:
+        log.error(f"Live status error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Nekoclaw cat-girl persona endpoints ─────────
+
+@router.post("/neko/pet")
+async def neko_pet_endpoint(request: Request):
+    server = get_server(request)
+    if server.persona != "nekoclaw":
+        raise HTTPException(status_code=404, detail="nekoclaw persona not active")
+    try:
+        sid = await server.chat_handler.create_session({"persona": "nekoclaw"})
+        resp = await server.chat_handler.chat(sid, "（轻轻摸头）喵喵乖~")
+        extra_action = "purr"
+        return {"session_id": sid, "response": resp, "emotion": "happy", "action": extra_action}
+    except Exception as e:
+        log.error(f"Neko pet error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/neko/headpat")
+async def neko_headpat_endpoint(request: Request):
+    server = get_server(request)
+    if server.persona != "nekoclaw":
+        raise HTTPException(status_code=404, detail="nekoclaw persona not active")
+    try:
+        sid = await server.chat_handler.create_session({"persona": "nekoclaw"})
+        resp = await server.chat_handler.chat(sid, "（摸头杀！）呼噜呼噜~好舒服喵~")
+        extra_action = "knead"
+        return {"session_id": sid, "response": resp, "emotion": "happy", "action": extra_action}
+    except Exception as e:
+        log.error(f"Neko headpat error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/neko/play")
+async def neko_play_endpoint(request: Request):
+    server = get_server(request)
+    if server.persona != "nekoclaw":
+        raise HTTPException(status_code=404, detail="nekoclaw persona not active")
+    try:
+        sid = await server.chat_handler.create_session({"persona": "nekoclaw"})
+        resp = await server.chat_handler.chat(sid, "（拿出逗猫棒晃了晃）来玩来玩！！")
+        return {"session_id": sid, "response": resp}
+    except Exception as e:
+        log.error(f"Neko play error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/neko/status")
+async def neko_status_endpoint(request: Request):
+    server = get_server(request)
+    if server.persona != "nekoclaw":
+        raise HTTPException(status_code=404, detail="nekoclaw persona not active")
+    try:
+        from neko_persona import (
+            PERSONA_NAME, NEKO_EMOTION_ACTIONS, NEKO_LIVE2D_PARAMS, NEKO_EXPRESSIONS,
+        )
+        return {
+            "persona": PERSONA_NAME,
+            "emotions": list(NEKO_EMOTION_ACTIONS.keys()),
+            "live2d_params": {k: list(v.keys()) for k, v in NEKO_LIVE2D_PARAMS.items()},
+            "expressions": list(NEKO_EXPRESSIONS.keys()),
+        }
+    except Exception as e:
+        log.error(f"Neko status error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

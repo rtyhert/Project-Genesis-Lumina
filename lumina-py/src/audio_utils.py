@@ -1,4 +1,3 @@
-import asyncio
 import hashlib
 import io
 import json
@@ -8,7 +7,7 @@ import struct
 import tempfile
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 log = logging.getLogger("lumina.audio_utils")
 
@@ -182,7 +181,6 @@ def convert_sample_rate(data: bytes, src_rate: int, dst_rate: int,
 def normalize_audio(data: bytes, target_dbfs: float = -3.0,
                     sample_rate: int = 24000, channels: int = 1, bits: int = 16) -> bytes:
     import audioop
-    import struct
     import math
 
     sample_width = bits // 8
@@ -294,7 +292,6 @@ def generate_silence(duration: float, sample_rate: int = 24000,
 
 def generate_tone(frequency: float, duration: float, sample_rate: int = 24000,
                   volume: float = 0.5, bits: int = 16) -> bytes:
-    import struct
     import math
 
     num_samples = int(sample_rate * duration)

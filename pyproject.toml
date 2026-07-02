@@ -1,0 +1,5 @@
+[workspace]
+packages = [
+    "lumina-py",
+    "lumina-bridge",
+]

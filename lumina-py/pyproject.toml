@@ -1,0 +1,34 @@
+[project]
+name = "lumina-py"
+version = "0.2.0"
+description = "Lumina AI Backend - Virtual Human Live Streaming Platform"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+    "grpcio>=1.62.0",
+    "grpcio-tools>=1.62.0",
+    "protobuf>=4.25.3",
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "websockets>=12.0",
+    "openai>=1.12.0",
+    "pydantic>=2.5.3",
+    "pyyaml>=6.0.1",
+    "numpy>=1.26.3",
+    "soundfile>=0.12.1",
+    "edge-tts>=6.1.9",
+]
+
+[project.optional-dependencies]
+stt = ["openai-whisper>=20231117", "vosk>=0.3.45"]
+crew = ["crewai[tools]>=0.30.0"]
+audio = ["sounddevice>=0.4.6", "pydub>=0.25.1", "webrtcvad>=2.0.10"]
+dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.5", "httpx>=0.26.0"]
+all = ["lumina-py[stt,crew,audio,dev]"]
+
+[project.urls]
+Homepage = "https://github.com/anomalyco/upage"
+
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"

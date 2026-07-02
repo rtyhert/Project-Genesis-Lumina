@@ -273,8 +273,6 @@ class LipSyncGenerator:
         if not phoneme_timings:
             return LipSyncData()
 
-        from .tts_engine import PhonemeTiming
-
         frames: List[LipFrame] = []
         all_phonemes = phoneme_timings
         total_duration = max(p.end_time for p in all_phonemes) if all_phonemes else 0.0

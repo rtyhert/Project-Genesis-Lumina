@@ -1,1 +1,114 @@
-#pragma once#include <string>#include <memory>#include <functional>#include <vector>#include <map>#include <thread>#include <atomic>#include <grpcpp/grpcpp.h>#include "lumina.pb.h"#include "lumina.grpc.pb.h"namespace lumina {struct ChatInput {    std::string user_id;    std::string message;    std::string session_id;    std::map<std::string, std::string> context;    std::map<std::string, float> emotion_context;};struct ChatOutput {    std::string reply_text;    std::string emotion;    std::string action;};struct Live2DControlArgs {    std::string session_id;    int command_type = 0;  // 0=expression, 1=motion, 2=param, 3=lip_sync, 4=physics    int expression_type = 0;    int motion_group = 0;    std::string animation_id;    std::string param_name;    float param_value = 0.0f;    float intensity = 1.0f;    float duration = 1.0f;    float speed = 1.0f;    float transition_time = 0.3f;    bool loop = false;    bool queue = false;    bool lip_sync_enabled = true;    float lip_sync_gain = 1.0f;    bool physics_enabled = true;    bool physics_reset = false;    uint32_t priority = 0;};enum class Live2DCommandType {    kExpression = 0,    kMotion = 1,    kParam = 2,    kLipSync = 3,    kPhysics = 4,};struct LiveStatusData {    std::string stream_id;    int event_type = 0;    uint64_t timestamp = 0;    uint64_t event_id = 0;    std::string user_name;    std::string message;};using AudioCallback = std::function<void(const std::vector<float>& samples)>;using StatusCallback = std::function<void(const std::string& type, const std::string& payload, uint64_t timestamp)>;using LiveStatusCallback = std::function<void(const LiveStatusData& data)>;struct AsyncCall {    virtual void Proceed(bool ok) = 0;    virtual ~AsyncCall() = default;};class BridgeClient {public:    explicit BridgeClient(const std::string& server_addr);    ~BridgeClient();    // Chat    ChatOutput ProcessChat(const ChatInput& input);    // Audio    void StreamAudio(const std::string& text, AudioCallback on_audio);    // Action    bool TriggerAction(const std::string& type, const std::string& emotion, float intensity = 1.0f);    // Emotion    bool SendEmotion(const std::string& session_id, const std::string& category,                     float intensity, float valence, float arousal);    // Live2D    bool Live2DControl(const Live2DControlArgs& args);    // Status streaming    void StreamStatus(const std::string& client_id, const std::vector<std::string>& events,                      StatusCallback on_event);    // Gift    bool SendGift(const std::string& stream_id, const std::string& user_name,                  const std::string& gift_name, int count);    // Live stream status    void StreamLiveStatus(const std::string& stream_id, const std::string& platform,                          LiveStatusCallback on_event);    // Connection    bool IsConnected() const;    std::string GetEndpoint() const { return addr_; }private:    void CreateStub();    bool EnsureConnection();    void AsyncCompletionLoop();    std::string addr_;    std::shared_ptr<grpc::Channel> channel_;    std::unique_ptr<VirtualHuman::Stub> stub_;    grpc::CompletionQueue cq_;    std::thread worker_;    std::atomic<bool> running_;    uint32_t reconnect_delay_ms_;};inline bool BridgeClient::IsConnected() const {    return channel_ && channel_->GetState(false) == GRPC_CHANNEL_READY;}} // namespace lumina
+#pragma once
+#include <string>
+#include <memory>
+#include <functional>
+#include <vector>
+#include <map>
+#include <thread>
+#include <atomic>
+#include <grpcpp/grpcpp.h>
+#include "lumina.pb.h"
+#include "lumina.grpc.pb.h"
+
+namespace lumina {
+
+struct ChatInput {
+    std::string user_id;
+    std::string message;
+    std::string session_id;
+    std::map<std::string, std::string> context;
+    std::map<std::string, float> emotion_context;
+};
+
+struct ChatOutput {
+    std::string reply_text;
+    std::string emotion;
+    std::string action;
+};
+
+struct Live2DControlArgs {
+    std::string session_id;
+    int command_type = 0;
+    int expression_type = 0;
+    int motion_group = 0;
+    std::string animation_id;
+    std::string param_name;
+    float param_value = 0.0f;
+    float intensity = 1.0f;
+    float duration = 1.0f;
+    float speed = 1.0f;
+    float transition_time = 0.3f;
+    bool loop = false;
+    bool queue = false;
+    bool lip_sync_enabled = true;
+    float lip_sync_gain = 1.0f;
+    bool physics_enabled = true;
+    bool physics_reset = false;
+    uint32_t priority = 0;
+};
+
+enum class Live2DCommandType {
+    kExpression = 0,
+    kMotion = 1,
+    kParam = 2,
+    kLipSync = 3,
+    kPhysics = 4,
+};
+
+struct LiveStatusData {
+    std::string stream_id;
+    int event_type = 0;
+    uint64_t timestamp = 0;
+    uint64_t event_id = 0;
+    std::string user_name;
+    std::string message;
+};
+
+using AudioCallback = std::function<void(const std::vector<float>& samples)>;
+using StatusCallback = std::function<void(const std::string& type, const std::string& payload, uint64_t timestamp)>;
+using LiveStatusCallback = std::function<void(const LiveStatusData& data)>;
+
+struct AsyncCall {
+    virtual void Proceed(bool ok) = 0;
+    virtual ~AsyncCall() = default;
+};
+
+class BridgeClient {
+public:
+    explicit BridgeClient(const std::string& server_addr);
+    ~BridgeClient();
+
+    ChatOutput ProcessChat(const ChatInput& input);
+    void StreamAudio(const std::string& text, AudioCallback on_audio);
+    bool TriggerAction(const std::string& type, const std::string& emotion, float intensity = 1.0f);
+    bool SendEmotion(const std::string& session_id, int category,
+                     float intensity, float valence, float arousal);
+    bool Live2DControl(const Live2DControlArgs& args);
+    void StreamStatus(const std::string& client_id, const std::vector<std::string>& events,
+                      StatusCallback on_event);
+    bool SendGift(const std::string& stream_id, const std::string& user_name,
+                  const std::string& gift_name, int count);
+    void StreamLiveStatus(const std::string& stream_id, const std::string& platform,
+                          LiveStatusCallback on_event);
+    bool IsConnected() const;
+    std::string GetEndpoint() const { return addr_; }
+
+private:
+    void CreateStub();
+    bool EnsureConnection();
+    void AsyncCompletionLoop();
+
+    std::string addr_;
+    std::shared_ptr<grpc::Channel> channel_;
+    std::unique_ptr<VirtualHuman::Stub> stub_;
+    grpc::CompletionQueue cq_;
+    std::thread worker_;
+    std::atomic<bool> running_;
+    uint32_t reconnect_delay_ms_;
+};
+
+inline bool BridgeClient::IsConnected() const {
+    return channel_ && channel_->GetState(false) == GRPC_CHANNEL_READY;
+}
+
+} // namespace lumina

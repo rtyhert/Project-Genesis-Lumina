@@ -1,15 +1,25 @@
 import logging
-from typing import Optional
+from typing import AsyncGenerator, Optional
 
 log = logging.getLogger("lumina.llm")
+
 
 class LLMService:
     def __init__(self, config):
         self.cfg = config
         self.provider = config.get("provider", "openai")
         self.model = config.get("model", "gpt-4")
+        self._mock_mode = False
+
+        try:
+            import openai
+        except ImportError:
+            self._mock_mode = True
 
     async def chat(self, prompt: str, system: Optional[str] = None) -> str:
+        if self._mock_mode:
+            return f"[Mock] {prompt}"
+
         log.info(f"LLM[{self.model}]: {prompt[:60]}...")
         try:
             from openai import AsyncOpenAI
@@ -28,7 +38,11 @@ class LLMService:
         except ImportError:
             return f"[Mock] Processed: {prompt}"
 
-    async def stream_chat(self, prompt: str):
+    async def stream_chat(self, prompt: str) -> AsyncGenerator[str, None]:
+        if self._mock_mode:
+            yield f"[Mock stream] {prompt}"
+            return
+
         try:
             from openai import AsyncOpenAI
             client = AsyncOpenAI()

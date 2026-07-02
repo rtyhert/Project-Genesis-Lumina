@@ -1,53 +1,49 @@
 #pragma once
 #include <string>
-#include <memory>
 #include <functional>
-#include <any>
+#include <memory>
 #include <vector>
 
 namespace lumina {
-namespace bridge {
 
-enum class MessageType {
-    CHAT_REQUEST,
-    CHAT_RESPONSE,
-    AUDIO_STREAM,
-    LIP_SYNC,
-    ACTION_TRIGGER,
-    STATUS_EVENT,
+enum class BridgeMessageType {
+    kChatRequest,
+    kChatResponse,
+    kAudioData,
+    kLipSync,
+    kEmotion,
+    kAction,
+    kLive2DCommand,
+    kStatusEvent,
+    kGiftNotify,
+    kShutdown,
 };
 
-struct Message {
-    MessageType type;
-    std::string payload;
+struct BridgeMessage {
+    BridgeMessageType type;
     std::string topic;
-    uint64_t timestamp;
+    std::vector<uint8_t> payload;
+    uint64_t timestamp = 0;
 };
 
-class MessageQueue {
+class IpcChannel {
 public:
-    virtual ~MessageQueue() = default;
-    virtual void Push(const Message& msg) = 0;
-    virtual bool Pop(Message& msg) = 0;
-    virtual size_t Size() const = 0;
+    using MessageHandler = std::function<void(const BridgeMessage&)>;
+
+    explicit IpcChannel(const std::string& channel_name);
+    ~IpcChannel();
+
+    bool Initialize();
+    void Shutdown();
+
+    bool Send(const BridgeMessage& msg);
+    void SetHandler(MessageHandler handler);
+
+    bool IsConnected() const;
+
+private:
+    class Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
-class IPCChannel {
-public:
-    IPCChannel() = default;
-    virtual ~IPCChannel() = default;
-    virtual bool Connect(const std::string& endpoint) = 0;
-    virtual void Disconnect() = 0;
-    virtual bool Send(const Message& msg) = 0;
-    virtual bool Receive(Message& msg) = 0;
-    virtual bool IsConnected() const = 0;
-
-    using ReceiveCallback = std::function<void(const Message&)>;
-    void SetCallback(ReceiveCallback cb) { callback_ = cb; }
-
-protected:
-    ReceiveCallback callback_;
-};
-
-} // namespace bridge
 } // namespace lumina

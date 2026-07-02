@@ -5,6 +5,15 @@ server:
 
 hot_reload: false
 
+# Mock mode: set to true to run without any real AI services
+# Perfect for first-time users and frontend development
+mock:
+  enabled: false
+  # Simulated latency in seconds (0 = instant)
+  latency: 0.3
+  # When true, the server auto-detects available services and falls back to mock
+  auto_fallback: true
+
 llm:
   provider: "openai"
   model: "gpt-4"
@@ -46,12 +55,23 @@ neuro:
   stream_mode: "simulate"
   audience_size: 10
   auto_reply: true
+  # Proactive behavior: emit spontaneous actions/comments every N seconds
+  proactive_interval: 30
 
 chat:
   session_timeout: 300
   max_sessions: 1000
   decay_rate: 0.1
   blend_threshold: 0.3
+
+persona:
+  # Current VTuber persona (set to 'nekoclaw' for cat-girl mode)
+  name: "nekoclaw"
+
+monitoring:
+  # /metrics endpoint available when enabled
+  enabled: true
+  port: 9090
 
 logging:
   level: "INFO"

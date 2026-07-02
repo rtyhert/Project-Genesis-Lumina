@@ -1,1 +1,76 @@
-#pragma once#include <functional>#include <unordered_map>#include <vector>#include <array>namespace lumina {struct MouseState {    double x = 0.0;    double y = 0.0;    bool left_down = false;    bool right_down = false;    bool middle_down = false;};struct KeyboardState {    std::unordered_map<int, bool> keys;    bool IsKeyDown(int key) const;};struct CameraFrame {    int width = 0;    int height = 0;    int channels = 3;    std::vector<uint8_t> data;};class InputHandler {public:    InputHandler();    ~InputHandler();    using KeyCallback = std::function<void(int key, int scancode, int action, int mods)>;    using MouseButtonCallback = std::function<void(int button, int action, int mods)>;    using MouseMoveCallback = std::function<void(double x, double y)>;    using ScrollCallback = std::function<void(double xoffset, double yoffset)>;    using CharCallback = std::function<void(unsigned int codepoint)>;    void Update();    void SetKeyCallback(KeyCallback cb);    void SetMouseButtonCallback(MouseButtonCallback cb);    void SetMouseMoveCallback(MouseMoveCallback cb);    void SetScrollCallback(ScrollCallback cb);    void SetCharCallback(CharCallback cb);    void OnKey(int key, int scancode, int action, int mods);    void OnMouseButton(int button, int action, int mods);    void OnMouseMove(double x, double y);    void OnScroll(double xoffset, double yoffset);    void OnChar(unsigned int codepoint);    const MouseState& GetMouse() const { return mouse_; }    const KeyboardState& GetKeyboard() const { return keyboard_; }    bool IsClickOnModel(double mx, double my, float model_x, float model_y,                        float model_w, float model_h) const;    bool InitCamera(int device_index = 0, int width = 640, int height = 480);    bool CaptureCameraFrame(CameraFrame& frame);    void ShutdownCamera();private:    MouseState mouse_;    KeyboardState keyboard_;    KeyCallback key_cb_;    MouseButtonCallback mouse_btn_cb_;    MouseMoveCallback mouse_move_cb_;    ScrollCallback scroll_cb_;    CharCallback char_cb_;    void* camera_device_ = nullptr;    bool camera_initialized_ = false;};} // namespace lumina
+#pragma once
+#include <functional>
+#include <memory>
+#include <unordered_map>
+#include <vector>
+#include <array>
+
+namespace lumina {
+
+struct MouseState {
+    double x = 0.0;
+    double y = 0.0;
+    bool left_down = false;
+    bool right_down = false;
+    bool middle_down = false;
+};
+
+struct KeyboardState {
+    std::unordered_map<int, bool> keys;
+    bool IsKeyDown(int key) const;
+};
+
+struct CameraFrame {
+    int width = 0;
+    int height = 0;
+    int channels = 3;
+    std::vector<uint8_t> data;
+};
+
+class InputHandler {
+public:
+    InputHandler();
+    ~InputHandler();
+
+    using KeyCallback = std::function<void(int key, int scancode, int action, int mods)>;
+    using MouseButtonCallback = std::function<void(int button, int action, int mods)>;
+    using MouseMoveCallback = std::function<void(double x, double y)>;
+    using ScrollCallback = std::function<void(double xoffset, double yoffset)>;
+    using CharCallback = std::function<void(unsigned int codepoint)>;
+
+    void Update();
+    void SetKeyCallback(KeyCallback cb);
+    void SetMouseButtonCallback(MouseButtonCallback cb);
+    void SetMouseMoveCallback(MouseMoveCallback cb);
+    void SetScrollCallback(ScrollCallback cb);
+    void SetCharCallback(CharCallback cb);
+
+    void OnKey(int key, int scancode, int action, int mods);
+    void OnMouseButton(int button, int action, int mods);
+    void OnMouseMove(double x, double y);
+    void OnScroll(double xoffset, double yoffset);
+    void OnChar(unsigned int codepoint);
+
+    const MouseState& GetMouse() const { return mouse_; }
+    const KeyboardState& GetKeyboard() const { return keyboard_; }
+
+    bool IsClickOnModel(double mx, double my, float model_x, float model_y,
+                        float model_w, float model_h) const;
+
+    bool InitCamera(int device_index = 0, int width = 640, int height = 480);
+    bool CaptureCameraFrame(CameraFrame& frame);
+    void ShutdownCamera();
+
+private:
+    MouseState mouse_;
+    KeyboardState keyboard_;
+    KeyCallback key_cb_;
+    MouseButtonCallback mouse_btn_cb_;
+    MouseMoveCallback mouse_move_cb_;
+    ScrollCallback scroll_cb_;
+    CharCallback char_cb_;
+    class Impl;
+    std::unique_ptr<Impl> impl_;
+};
+
+} // namespace lumina
